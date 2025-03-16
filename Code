@@ -1,0 +1,93 @@
+pip install streamlit python-docx PyPDF2
+import streamlit as st
+import PyPDF2
+import docx
+
+
+def extract_text_from_pdf(uploaded_file):
+    text = ""
+    reader = PyPDF2.PdfReader(uploaded_file)
+    for page in reader.pages:
+        text += page.extract_text() + "\n"
+    return text
+
+
+def extract_text_from_docx(uploaded_file):
+    doc = docx.Document(uploaded_file)
+    return "\n".join([para.text for para in doc.paragraphs])
+
+
+def calculate_keyword_match(resume_text, job_keywords):
+    matched_keywords = [kw for kw in job_keywords if kw.lower() in resume_text.lower()]
+    match_score = (len(matched_keywords) / len(job_keywords)) * 100 if job_keywords else 0
+    return round(match_score, 2), matched_keywords
+
+
+def calculate_resume_length_score(num_pages, min_pages):
+    length_score = 100 if num_pages >= min_pages else 0
+    return round(length_score, 2), num_pages
+
+
+def main():
+    st.title("📄 ATS Resume Checker")
+    st.write("Upload your resume (PDF/DOCX) to check its ATS score.")
+    uploaded_file = st.file_uploader("Upload Resume", type=["pdf", "docx"])
+
+    aspects = {
+        "Keyword Matching": [],
+        "Resume Length": ["1 Page", "2 Pages", "3+ Pages"],
+        "Section Identification": ["Work Experience", "Education", "Skills", "Certificates", "Projects"]
+    }
+
+    selected_aspects = st.multiselect("Select Aspects to Analyze", list(aspects.keys()))
+    selected_sub_aspects = {}
+
+    for aspect in selected_aspects:
+        if aspects[aspect]:
+            selected_sub_aspects[aspect] = st.multiselect(f"Select Sub Aspects for {aspect}", aspects[aspect])
+
+    job_keywords = ["Python", "Machine Learning", "Data Analysis", "Project Management", "Communication",
+                    "Cloud Computing", "AWS"]
+    total_score = 0
+    num_aspects = 0
+
+    if uploaded_file is not None:
+        file_type = uploaded_file.name.split(".")[-1]
+        resume_text = extract_text_from_pdf(uploaded_file) if file_type == "pdf" else extract_text_from_docx(
+            uploaded_file)
+        num_pages = len(resume_text.split("\f")) if file_type == "pdf" else len(
+            resume_text) // 500  # Approximate pages for DOCX
+
+        if "Keyword Matching" in selected_aspects:
+            keyword_score, matched_keywords = calculate_keyword_match(resume_text, job_keywords)
+            total_score += keyword_score
+            num_aspects += 1
+            st.subheader(f"📊 Keyword Matching Score: {keyword_score}%")
+            st.write(f"Matched Keywords: {', '.join(matched_keywords)}")
+
+        if "Resume Length" in selected_aspects and selected_sub_aspects.get("Resume Length"):
+            for pages in selected_sub_aspects["Resume Length"]:
+                min_pages = int(pages.split()[0])
+                length_score, page_count = calculate_resume_length_score(num_pages, min_pages)
+                total_score += length_score
+                num_aspects += 1
+                st.subheader(f"📏 Resume Length Score ({pages}): {length_score}%")
+                st.write(f"Total Pages: {page_count}")
+
+        if "Section Identification" in selected_aspects and selected_sub_aspects.get("Section Identification"):
+            detected_sections = {section: (section.lower() in resume_text.lower()) for section in
+                                 selected_sub_aspects["Section Identification"]}
+            for section, found in detected_sections.items():
+                score = 100 if found else 0
+                total_score += score
+                num_aspects += 1
+                st.subheader(f"📑 {section} Section Score: {score}%")
+                st.write(f"Detected: {'Yes' if found else 'No'}")
+
+        if num_aspects > 0:
+            final_score = round(total_score / num_aspects, 2)
+            st.title(f"🎯 Total ATS Score: {final_score}%")
+
+
+if _name_ == "_main_":
+    main()
